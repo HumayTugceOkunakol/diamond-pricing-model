@@ -1,0 +1,393 @@
+---
+title: "BA Group 10 Codes"
+format: html
+editor: visual
+---
+
+## Quarto
+
+Hümay Tuğçe Okunakol, Inesa Habelaia, Senna Periviita and Brendan Friberg 
+
+## Packages
+
+```{r}
+#warning: false 
+#echo: false
+library(ggplot2)
+library(rio)
+library(tidyverse)
+library(hexbin)
+library(scales)
+library(ggridges)
+library(janitor)
+library(dplyr)
+library(broom)
+library(car)
+library(caret)
+library(ggcorrplot)
+library(lmtest)
+library(sandwich)
+diamonds <- diamonds 
+view(diamonds)
+summary(diamonds)
+```
+
+## Count
+
+```{r}
+
+diamonds %>% count(cut)
+diamonds %>% count(color)
+diamonds %>% count(clarity)
+
+```
+
+## Boxplots
+
+```{r}
+ggplot(diamonds, aes(x = cut, y = price, fill = cut)) +
+  geom_boxplot() +
+  scale_y_log10(labels = scales::comma) +
+  labs(
+    title = "Price ~ Cut",
+    x = "Cut (from worst to best quality)",
+    y = "Price"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(face = "bold", hjust = 0.5)
+  )
+
+
+```
+
+```{r}
+ggplot(diamonds, aes(x = color, y = price, fill = color)) +
+  geom_boxplot() +
+  scale_fill_brewer(palette = "Blues") +
+  labs(title = "Diamond Price Distribution by Color",
+       x = "Color Grade (D = Clear, J = Intense Color)",
+       y = "Price (USD)") +
+  theme_minimal()
+```
+
+```{r}
+ggplot(diamonds, aes(x = clarity, y = price, fill = clarity)) +
+  geom_boxplot() +
+  scale_y_log10(labels = scales::comma) +
+  labs(
+    title = "Price & clarity",
+    x = "clarity",
+    y = "Price"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(face = "bold", hjust = 0.5)
+  )
+
+
+```
+
+## Price vs. Carat(Scatter Plot)
+
+```{r}
+ggplot(diamonds, aes(x = carat, y = price)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "gam", formula = y ~ s(x), se = FALSE, color = "red") +
+  labs(title = "Price - Carat",
+       x = "Carat",
+       y = "Price")
+```
+
+## Price vs. Carat(Heatmap)
+
+```{r}
+#This heat map visualizes the relationship between diamond carat and price where color intensity represents the number of diamonds in each area.
+ ggplot(diamonds, aes(carat, price)) +
+    geom_hex(bins = 40) +
+     scale_y_log10(labels=scales::comma) +
+     labs(title="Price ~ Carat (hexbin, log10 price)") +
+guides(fill=guide_colorbar(title="Count"))
+```
+
+## Distribution of Numerical Variables 
+
+```{r}
+#Purpose: See skewness, outliers, and typical ranges.
+diamonds %>%
+    select(price, carat, depth, table, x, y, z) %>%
+    pivot_longer(everything()) %>%
+    ggplot(aes(value)) +
+    geom_histogram(bins = 40) +
+    facet_wrap(~name, scales = "free") +
+    labs(title="Distributions of Numerical Variables")
+
+```
+
+## Cleaning Data
+
+```{r}
+# Remove potential outliers (x,y,z = 0 are invalid)
+diamonds_clean <- diamonds %>%
+  filter(x > 0, y > 0, z > 0)
+
+# Log-transform price and carat to handle right-skewed distributions
+diamonds_clean <- diamonds_clean %>%
+  mutate(log_price = log(price),
+         log_carat = log(carat))
+
+diamonds_clean <- diamonds_clean %>%
+  mutate(
+    log_price = log(price),
+    log_carat = log(carat)
+  )
+
+```
+
+## Summary of Data
+
+```{r}
+numeric_summary <- diamonds %>%
+  select(carat, depth, table, x, y, z, price) %>%
+  summarise(across(
+    everything(),
+    list(
+      Mean = ~mean(.),
+      Median = ~median(.),
+      SD = ~sd(.),
+      Min = ~min(.),
+      Max = ~max(.)
+    ),
+    .names = "{.col}_{.fn}"
+  )) %>%
+  tidyr::pivot_longer(everything(),
+                      names_to = c("Variable", ".value"),
+                      names_sep = "_")
+numeric_summary <- numeric_summary %>%
+  mutate(across(c(Mean, Median, SD, Min, Max), ~round(., 2)))
+
+numeric_summary
+
+```
+
+## Log(Price)
+
+```{r}
+# Distribution of log(price)
+ggplot(diamonds_clean, aes(x = log_price)) +
+  geom_histogram(bins = 40, fill = "steelblue", color = "white") +
+  labs(title = "Distribution of log(Price)", x = "log(Price)", y = "Count")
+```
+
+## Correlation Heatmap of Numerical Data
+
+```{r}
+# Correlation matrix for numerical variables
+num_vars <- diamonds_clean %>% 
+  select(carat, depth, table, x, y, z, price)
+corr <- cor(num_vars)
+ggcorrplot(corr, lab = TRUE, title = "Correlation Heatmap of Numerical Variables")
+```
+
+```         
+```
+
+## Models
+
+```{r}
+# Step-by-step model construction
+
+# Baseline model: log(price) ~ log(carat)
+model1 <- lm(log_price ~ log_carat, data = diamonds_clean)
+
+# Add cut, color, clarity as categorical predictors
+model2 <- lm(log_price ~ log_carat + cut + color + clarity, data = diamonds_clean)
+
+# Full model: add geometric features
+model3 <- lm(log_price ~ log_carat + cut + color + clarity + depth + table, data = diamonds_clean)
+# Get tidy summary
+results <- tidy(model2)
+print(results)
+
+summary(model1)
+summary(model2)
+summary(model3)
+
+glance(model1)
+glance(model2)
+glance(model3)
+```
+
+## Coefficient Estimates (Bar Plot)
+
+```{r}
+# Model
+model <- lm(log(price) ~ log(carat) + cut + color + clarity, data = diamonds)
+
+coef_df <- broom::tidy(model) %>%
+  filter(term != "(Intercept)") %>%  
+  mutate(term = reorder(term, estimate))
+
+ggplot(coef_df, aes(x = term, y = estimate, fill = estimate > 0)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(
+    title = "Coefficient Estimates (Bar Plot)",
+    x = "Predictor",
+    y = "Estimate (log-price scale)"
+  ) +
+  theme_minimal(base_size = 13)
+
+```
+
+## Residuals Diagnostics
+
+```{r}
+# Residual plots
+par(mfrow=c(2,2))
+plot(model2)
+```
+
+## Residual Density Plot 
+
+```{r}
+model <- lm(log(price) ~ log(carat) + cut + color + clarity, data = diamonds)
+
+#  (residuals) çıkar
+residuals_df <- data.frame(Residuals = resid(model))
+
+# (density plot)
+ggplot(residuals_df, aes(x = Residuals)) +
+  geom_density(fill = "steelblue", alpha = 0.6) +
+  geom_vline(xintercept = 0, color = "red", linetype = "dashed") +
+  labs(
+    title = "Residual Density Plot",
+    x = "Residuals (log-price scale)",
+    y = "Density"
+  ) +
+  theme_minimal(base_size = 13)
+
+```
+
+## Cook's Distance
+
+```{r}
+
+model <- lm(log(price) ~ log(carat) + cut + color + clarity, data = diamonds)
+
+# Influence plot (Cook's Distance vs Leverage)
+influencePlot(model, 
+              id.method = "identify", 
+              main = "Influence Plot (Cook's Distance vs Leverage)",
+              sub = "Circle size represents Cook's Distance")
+
+influence_data <- data.frame(
+  hat = hatvalues(model),
+  stud_resid = rstudent(model),
+  cooks = cooks.distance(model)
+)
+
+ggplot(influence_data, aes(x = hat, y = stud_resid)) +
+  geom_point(aes(size = cooks), alpha = 0.5, color = "steelblue") +
+  geom_hline(yintercept = c(-2, 0, 2), linetype = "dashed", color = "gray50") +
+  geom_vline(xintercept = 2*mean(influence_data$hat), linetype = "dashed", color = "gray50") +
+  scale_size_continuous(range = c(0.5, 10)) +
+  labs(
+    title = "Influence Plot (Cook's Distance vs Leverage)",
+    x = "Hat-Values (Leverage)",
+    y = "Studentized Residuals",
+    size = "Cook's D"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+
+
+
+```
+
+## Homoskedasticity test
+
+```{r}
+# Homoskedasticity test (Breusch-Pagan)
+bptest(model2)
+```
+
+## Robust standard errors
+
+```{r}
+coeftest(model2, vcov = vcovHC(model2, type = "HC1"))
+```
+
+## Shapiro-Wilk normality test
+
+```{r}
+# Normality of residuals (Shapiro test on sample)
+set.seed(123)
+sample_resid <- sample(resid(model3), 5000)
+shapiro.test(sample_resid)
+```
+
+## Cross-validation (10-fold)
+
+```{r}
+# Cross-validation
+train_control <- trainControl(
+  method = "cv",       # "cv" = cross-validation
+  number = 10,         # 10 katlı
+  verboseIter = FALSE  # eğitim sürecini göstermesin
+)
+
+cv_model <- train(
+  log_price ~ log_carat + cut + color + clarity, data = diamonds_clean,
+  method = "lm",
+  trControl = train_control)
+```
+
+## Actual vs Predicted Prices
+
+```{r}
+actual_vs_predicted <- data.frame(
+  Actual_Price = diamonds_clean$price,
+  Predicted_Price = exp(predict(model2, newdata = diamonds_clean))
+)
+
+ggplot(actual_vs_predicted, aes(x = Actual_Price, y = Predicted_Price)) +
+  geom_point(alpha = 0.3, color = "steelblue") +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+  scale_x_log10(labels = comma) +
+  scale_y_log10(labels = comma) +
+  labs(title = "Actual vs Predicted Prices") +
+  theme_minimal()
+
+```
+
+## Model Evaluation Metrics
+
+```{r}
+library(Metrics)
+
+rmse_value <- rmse(actual_vs_predicted$Actual_Price, actual_vs_predicted$Predicted_Price)
+r2_value <- cor(actual_vs_predicted$Actual_Price, actual_vs_predicted$Predicted_Price)^2
+mae_value <- mae(actual_vs_predicted$Actual_Price, actual_vs_predicted$Predicted_Price)
+
+data.frame(
+  Metric = c("RMSE", "R²", "MAE"),
+  Value = c(rmse_value, r2_value, mae_value)
+)
+
+```
+
+## Variance Inflation Factor (VIF) — Multicollinearity Check
+
+```{r}
+vif(model2)
+```
+
+```{r}
+ggplot(diamonds, aes(x = carat, y = price)) +
+  geom_point(alpha = 0.3) +
+  labs(title = "Price vs Carat: Positive Correlation")
+
+```
